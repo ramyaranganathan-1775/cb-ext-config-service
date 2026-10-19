@@ -1,5 +1,7 @@
 package com.igot.cb.formConfiguration.external;
 
+import com.igot.cb.util.Constants;
+
 /**
  * Thrown by {@link ShaKeyDecoderService#decode} when the sha key (lms profileToken) has a valid
  * signature but its {@code exp} has passed. Unlike every other sha key problem, this one is
@@ -11,7 +13,7 @@ public class ShaKeyExpiredException extends RuntimeException {
     private final String userId;
 
     public ShaKeyExpiredException(String userId) {
-        super("Sha key (profile token) expired");
+        super(Constants.ResponseMessages.PROFILE_TOKEN_EXPIRED);
         this.userId = userId;
     }
 
