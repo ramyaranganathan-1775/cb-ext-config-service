@@ -91,6 +91,7 @@ public class ShaKeyDecoderServiceImpl implements ShaKeyDecoderService {
             String userId = claims.get(CLAIM_USER, String.class);
             String rootOrgId = claims.get(CLAIM_ROOT_ORG_ID, String.class);
             String ministryOrStateType = claims.get(Constants.MINISTRY_OR_STATE_TYPE, String.class);
+            String sbOrgType = claims.get(Constants.SB_ORG_TYPE, String.class);
             String designation = claims.get(Constants.DESIGNATION, String.class);
 
             if (StringUtils.isBlank(userId) || StringUtils.isBlank(rootOrgId)) {
@@ -103,6 +104,7 @@ public class ShaKeyDecoderServiceImpl implements ShaKeyDecoderService {
                     .userId(userId)
                     .rootOrgId(rootOrgId)
                     .ministryOrStateType(ministryOrStateType)
+                    .sbOrgType(sbOrgType)
                     .designations(StringUtils.isNotBlank(designation) ? List.of(designation) : List.of())
                     .build());
         } catch (ExpiredJwtException e) {

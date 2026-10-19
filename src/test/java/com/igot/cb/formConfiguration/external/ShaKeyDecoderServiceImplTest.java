@@ -230,4 +230,25 @@ class ShaKeyDecoderServiceImplTest {
 
         assertTrue(service.decode(signedToken(SECRET, claims)).isPresent());
     }
+
+    @Test
+    void sbOrgTypeClaim_isReadIntoProfile() {
+        ShaKeyDecoderServiceImpl service = newService(SECRET);
+        Map<String, Object> claims = lmsProfileTokenClaims(System.currentTimeMillis() / 1000);
+        claims.put("sbOrgType", "state");
+
+        ShaKeyProfile profile = service.decode(signedToken(SECRET, claims)).orElseThrow();
+
+        assertEquals("SPV", profile.getMinistryOrStateType());
+        assertEquals("state", profile.getSbOrgType());
+    }
+
+    @Test
+    void tokenWithoutSbOrgType_stillDecodes() {
+        ShaKeyDecoderServiceImpl service = newService(SECRET);
+
+        ShaKeyProfile profile = service.decode(signedToken(SECRET, lmsProfileTokenClaims(System.currentTimeMillis() / 1000))).orElseThrow();
+
+        assertNull(profile.getSbOrgType());
+    }
 }

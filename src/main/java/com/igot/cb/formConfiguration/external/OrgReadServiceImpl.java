@@ -16,7 +16,6 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -99,16 +98,6 @@ public class OrgReadServiceImpl implements OrgReadService {
         JsonNode value = responseNode.path(Constants.MINISTRY_OR_STATE_TYPE);
         String ministryOrStateType = value.isMissingNode() || value.isNull() ? null : value.asText(null);
 
-        if (StringUtils.isNotBlank(ministryOrStateType)
-                && !"SPV".equalsIgnoreCase(ministryOrStateType)
-                && (Constants.MINISTRY.equalsIgnoreCase(ministryOrStateType) || Constants.STATE.equalsIgnoreCase(ministryOrStateType))) {
-            return ministryOrStateType.toLowerCase(Locale.ROOT);
-        }
-
-        if (Constants.MINISTRY.equalsIgnoreCase(sbOrgType) || Constants.STATE.equalsIgnoreCase(sbOrgType)) {
-            return sbOrgType.toLowerCase(Locale.ROOT);
-        }
-
-        return null;
+        return MinistryOrStateTypeResolver.resolve(ministryOrStateType, sbOrgType);
     }
 }

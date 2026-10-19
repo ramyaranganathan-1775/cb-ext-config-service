@@ -19,8 +19,10 @@ public class ShaKeyProfile {
     private final String userId;
     /** The "rootorgid" claim. */
     private final String rootOrgId;
-    /** The "ministryOrStateType" claim — already resolved by the issuer, trusted as-is. */
+    /** The "ministryOrStateType" claim, as issued (may be e.g. "SPV" - see {@link MinistryOrStateTypeResolver}). */
     private final String ministryOrStateType;
+    /** The "sbOrgType" claim - the fallback when ministryOrStateType isn't "ministry"/"state". */
+    private final String sbOrgType;
     /** The "designation" claim, wrapped into a single-element list (never null; empty if blank/absent). */
     private final List<String> designations;
 }

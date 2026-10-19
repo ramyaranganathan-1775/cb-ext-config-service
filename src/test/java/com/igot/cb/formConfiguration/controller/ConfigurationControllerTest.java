@@ -72,7 +72,7 @@ class ConfigurationControllerTest {
                     anyMap(), eq("token"), isNull(), isNull(), eq(false), eq("sha-token")))
             .thenReturn(response);
 
-    mockMvc.perform(post("/formsConfig/profile/read")
+    mockMvc.perform(post("/formsConfig/read/v2")
                     .contentType(MediaType.APPLICATION_JSON)
                     .header(Constants.Parameters.X_AUTH_TOKEN, "token")
                     .header(Constants.Parameters.X_AUTH_PROFILE_TOKEN, "sha-token")
@@ -82,7 +82,7 @@ class ConfigurationControllerTest {
 
   @Test
   void readFormConfigWithProfileToken_missingShaKeyHeader_isBadRequest() throws Exception {
-    mockMvc.perform(post("/formsConfig/profile/read")
+    mockMvc.perform(post("/formsConfig/read/v2")
                     .contentType(MediaType.APPLICATION_JSON)
                     .header(Constants.Parameters.X_AUTH_TOKEN, "token")
                     .content(objectMapper.writeValueAsString(getRequest())))

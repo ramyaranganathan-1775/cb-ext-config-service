@@ -18,11 +18,13 @@ public class ValidationService {
 
     public String validateForm(Map<String,Object> formRequest, String operation) {
         String validationMsg = Constants.SUCCESSFUL;
-        if (MapUtils.isEmpty(formRequest)) {
-            validationMsg = Constants.CHECK_REQUEST_PARAMS;
+        // Without a "request" object there's nothing else to check - return straight away (carrying on
+        // would fail on the missing object and surface as a 500 instead of this 400). An empty
+        // "request": {} is still an object, so it goes through the field checks below as before.
+        if (MapUtils.isEmpty(formRequest) || !(formRequest.get(Constants.Parameters.REQUEST) instanceof Map<?, ?>)) {
+            return Constants.CHECK_REQUEST_PARAMS;
         }
-        // validate for create operation
-        if(!formRequest.containsKey(Constants.Parameters.REQUEST) || ObjectUtils.isEmpty(formRequest.get(Constants.Parameters.REQUEST))) {
+        if (ObjectUtils.isEmpty(formRequest.get(Constants.Parameters.REQUEST))) {
             validationMsg = Constants.CHECK_REQUEST_PARAMS;
         }
 
@@ -97,6 +99,10 @@ public class ValidationService {
 
         if (ObjectUtils.isEmpty(requestObject.get(Constants.CLIENT_VERSION)) || Objects.isNull(requestObject.get(Constants.CLIENT_VERSION))) {
             validationMsg = Constants.ResponseMessages.FIELD_CLIENTVERSION_MISSING;
+        } else if (Constants.SUCCESSFUL.equals(validationMsg) && !isNumber(requestObject.get(Constants.CLIENT_VERSION))) {
+            // Only when everything else passed: read and update both do Double.valueOf(clientVersion),
+            // so a non-number would otherwise be a 500 there. Any other error message is left as it was.
+            validationMsg = Constants.ResponseMessages.INVALID_CLIENT_VERSION;
         }
         return  validationMsg;
     }
@@ -156,4 +162,12 @@ public class ValidationService {
         return Constants.SUCCESSFUL;
     }
 
+    private static boolean isNumber(Object value) {
+        try {
+            Double.valueOf(value.toString().trim());
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
 }

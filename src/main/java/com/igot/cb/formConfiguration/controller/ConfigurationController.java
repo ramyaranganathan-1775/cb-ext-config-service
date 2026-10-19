@@ -31,7 +31,7 @@ public class ConfigurationController {
    * {@code /read}, but the user's rootOrg / ministryOrStateType / designation come only from the
    * profileToken - no org read / user read calls. Expired token: 422; any other invalid token: 401.
    */
-  @PostMapping("/profile/read")
+  @PostMapping("/read/v2")
   public ResponseEntity<ApiResponse> readFormConfigWithProfileToken(
           @RequestBody Map<String, Object> request,
           @RequestHeader(Constants.Parameters.X_AUTH_TOKEN) String token,

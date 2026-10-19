@@ -492,4 +492,42 @@ class FormsConfigurationServiceImplTest {
         assertEquals("Invalid user profile token.", response.getParams().getErrMsg());
         verifyNoInteractions(orgReadService, userDesignationService, formConfigRuleEngine);
     }
+
+    @Test
+    void readFormConfig_spvTokenWithStateSbOrgType_getsDesignationRuleAsState() {
+        when(accessTokenValidator.fetchUserDetailsFromToken("token")).thenReturn(userDetails);
+        when(validationService.validateForm(anyMap(), eq(Constants.Parameters.READ))).thenReturn(Constants.SUCCESSFUL);
+        when(shaKeyDecoderService.decode("sha-token")).thenReturn(Optional.of(ShaKeyProfile.builder()
+                .userId("user1").rootOrgId("shaOrg1").ministryOrStateType("SPV").sbOrgType("state")
+                .designations(List.of("Director")).build()));
+        when(formConfigRuleEngine.resolve(any(FormConfigResolutionContext.class))).thenReturn(Optional.empty());
+
+        service.readFormConfig(getRequest(), "token", null, null, false, "sha-token");
+
+        verifyNoInteractions(orgReadService, userDesignationService);
+        ArgumentCaptor<FormConfigResolutionContext> ctxCaptor = ArgumentCaptor.forClass(FormConfigResolutionContext.class);
+        verify(formConfigRuleEngine).resolve(ctxCaptor.capture());
+        FormConfigResolutionContext ctx = ctxCaptor.getValue();
+        // Same as /read: SPV is replaced by sbOrgType.
+        assertEquals("state", ctx.getDesignationMinistryOrStateType());
+        assertEquals("shaOrg1", ctx.getDesignationRootOrg());
+        assertEquals(List.of("Director"), ctx.getDesignations());
+    }
+
+    @Test
+    void readFormConfig_spvTokenWithoutSbOrgType_skipsDesignationRule() {
+        when(accessTokenValidator.fetchUserDetailsFromToken("token")).thenReturn(userDetails);
+        when(validationService.validateForm(anyMap(), eq(Constants.Parameters.READ))).thenReturn(Constants.SUCCESSFUL);
+        when(shaKeyDecoderService.decode("sha-token")).thenReturn(Optional.of(ShaKeyProfile.builder()
+                .userId("user1").rootOrgId("shaOrg1").ministryOrStateType("SPV")
+                .designations(List.of("Director")).build()));
+        when(formConfigRuleEngine.resolve(any(FormConfigResolutionContext.class))).thenReturn(Optional.empty());
+
+        service.readFormConfig(getRequest(), "token", null, null, false, "sha-token");
+
+        ArgumentCaptor<FormConfigResolutionContext> ctxCaptor = ArgumentCaptor.forClass(FormConfigResolutionContext.class);
+        verify(formConfigRuleEngine).resolve(ctxCaptor.capture());
+        assertEquals(null, ctxCaptor.getValue().getDesignationMinistryOrStateType());
+        assertEquals(null, ctxCaptor.getValue().getDesignationRootOrg());
+    }
 }

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cb.authentication.model.UserDetails;
 import com.igot.cb.authentication.util.AccessTokenValidator;
 import com.igot.cb.formConfiguration.entity.FormConfigurationEntity;
+import com.igot.cb.formConfiguration.external.MinistryOrStateTypeResolver;
 import com.igot.cb.formConfiguration.external.OrgReadService;
 import com.igot.cb.formConfiguration.external.UserDesignationService;
 import com.igot.cb.formConfiguration.external.ShaKeyDecoderService;
@@ -119,7 +120,7 @@ public class FormsConfigurationServiceImpl implements FormsConfigurationService 
             String portal = requestData.get(Constants.PORTAL).toString();
             Double clientVersion = Double.valueOf(requestData.get(Constants.CLIENT_VERSION).toString());
 
-            // Sha key (lms profileToken, see ShaKeyDecoderService) - only on /formsConfig/profile/read,
+            // Sha key (lms profileToken, see ShaKeyDecoderService) - only on /formsConfig/read/v2,
             // which always passes one (shaKey == null means plain /formsConfig/read). It carries this
             // caller's rootorgid + ministryOrStateType + designation and is the ONLY source of them on
             // that path: no OrgReadService / UserDesignationService call is made. An expired token gets
@@ -159,8 +160,10 @@ public class FormsConfigurationServiceImpl implements FormsConfigurationService 
             // Neither -> designationRootOrg stays null, so the designation rule doesn't apply at all.
             String designationRootOrg = null;
             String designationMinistryOrStateType = null;
+            // Both sources resolve the type with the same rule (MinistryOrStateTypeResolver): ministry or
+            // state from ministryOrStateType, else from sbOrgType (e.g. an "SPV" org), else none.
             String tokenOrgType = shaKeyFlow
-                    ? shaKeyProfile.getMinistryOrStateType()
+                    ? MinistryOrStateTypeResolver.resolve(shaKeyProfile.getMinistryOrStateType(), shaKeyProfile.getSbOrgType())
                     : orgReadService.getMinistryOrStateType(rootOrg, token);
             if (Constants.MINISTRY.equalsIgnoreCase(tokenOrgType)) {
                 designationRootOrg = rootOrg;
