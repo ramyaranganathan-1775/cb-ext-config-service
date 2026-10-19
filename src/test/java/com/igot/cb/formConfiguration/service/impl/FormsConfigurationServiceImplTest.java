@@ -5,6 +5,9 @@ import com.igot.cb.authentication.model.UserDetails;
 import com.igot.cb.authentication.util.AccessTokenValidator;
 import com.igot.cb.formConfiguration.entity.FormConfigurationEntity;
 import com.igot.cb.formConfiguration.external.OrgReadService;
+import com.igot.cb.formConfiguration.external.ShaKeyDecoderService;
+import com.igot.cb.formConfiguration.external.ShaKeyExpiredException;
+import com.igot.cb.formConfiguration.external.ShaKeyProfile;
 import com.igot.cb.formConfiguration.external.UserDesignationService;
 import com.igot.cb.formConfiguration.repository.FormConfigurationRepository;
 import com.igot.cb.formConfiguration.rule.FormConfigResolutionContext;
@@ -59,6 +62,9 @@ class FormsConfigurationServiceImplTest {
 
     @Mock
     private CacheService cacheService;
+
+    @Mock
+    private ShaKeyDecoderService shaKeyDecoderService;
 
     private UserDetails userDetails;
 
@@ -353,5 +359,137 @@ class FormsConfigurationServiceImplTest {
         ApiResponse response = service.listFormConfigs("token");
 
         assertEquals(HttpStatus.OK, response.getResponseCode());
+    }
+
+    private ShaKeyProfile shaProfile(String userId) {
+        return ShaKeyProfile.builder()
+                .userId(userId)
+                .rootOrgId("shaOrg1")
+                .ministryOrStateType("ministry")
+                .designations(List.of("Additional Secretary"))
+                .build();
+    }
+
+    @Test
+    void readFormConfig_noShaKey_neverDecodes_andUsesExternalCalls() {
+        when(accessTokenValidator.fetchUserDetailsFromToken("token")).thenReturn(userDetails);
+        when(validationService.validateForm(anyMap(), eq(Constants.Parameters.READ))).thenReturn(Constants.SUCCESSFUL);
+        when(formConfigRuleEngine.resolve(any(FormConfigResolutionContext.class))).thenReturn(Optional.of(entity()));
+        when(objectMapper.convertValue(any(), eq(Map.class))).thenReturn(new HashMap<>());
+
+        ApiResponse response = service.readFormConfig(getRequest(), "token", null, null, false, null);
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        verifyNoInteractions(shaKeyDecoderService);
+        verify(orgReadService).getMinistryOrStateType("org1", "token");
+        verify(userDesignationService).resolveUserProfile(userDetails, "token");
+    }
+
+    @Test
+    void readFormConfig_trustedShaKey_skipsOrgReadAndUserRead() {
+        when(accessTokenValidator.fetchUserDetailsFromToken("token")).thenReturn(userDetails);
+        when(validationService.validateForm(anyMap(), eq(Constants.Parameters.READ))).thenReturn(Constants.SUCCESSFUL);
+        when(shaKeyDecoderService.decode("sha-token")).thenReturn(Optional.of(shaProfile("user1")));
+        when(formConfigRuleEngine.resolve(any(FormConfigResolutionContext.class))).thenReturn(Optional.of(entity()));
+        when(objectMapper.convertValue(any(), eq(Map.class))).thenReturn(new HashMap<>());
+
+        ApiResponse response = service.readFormConfig(getRequest(), "token", null, null, false, "sha-token");
+
+        assertEquals(HttpStatus.OK, response.getResponseCode());
+        verifyNoInteractions(orgReadService, userDesignationService);
+        ArgumentCaptor<FormConfigResolutionContext> ctxCaptor = ArgumentCaptor.forClass(FormConfigResolutionContext.class);
+        verify(formConfigRuleEngine).resolve(ctxCaptor.capture());
+        FormConfigResolutionContext ctx = ctxCaptor.getValue();
+        assertEquals("shaOrg1", ctx.getRootOrg());
+        assertEquals("shaOrg1", ctx.getDesignationRootOrg());
+        assertEquals("ministry", ctx.getDesignationMinistryOrStateType());
+        assertEquals(List.of("Additional Secretary"), ctx.getDesignations());
+    }
+
+    @Test
+    void readFormConfig_shaKeyForAnotherUser_returns401_noFallback() {
+        when(accessTokenValidator.fetchUserDetailsFromToken("token")).thenReturn(userDetails);
+        when(validationService.validateForm(anyMap(), eq(Constants.Parameters.READ))).thenReturn(Constants.SUCCESSFUL);
+        when(shaKeyDecoderService.decode("sha-token")).thenReturn(Optional.of(shaProfile("someone-else")));
+
+        ApiResponse response = service.readFormConfig(getRequest(), "token", null, null, false, "sha-token");
+
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getResponseCode());
+        assertEquals("Invalid user profile token.", response.getParams().getErrMsg());
+        verifyNoInteractions(orgReadService, userDesignationService, formConfigRuleEngine);
+    }
+
+    @Test
+    void readFormConfig_invalidShaKey_returns401_noFallback() {
+        when(accessTokenValidator.fetchUserDetailsFromToken("token")).thenReturn(userDetails);
+        when(validationService.validateForm(anyMap(), eq(Constants.Parameters.READ))).thenReturn(Constants.SUCCESSFUL);
+        when(shaKeyDecoderService.decode("bad")).thenReturn(Optional.empty());
+
+        ApiResponse response = service.readFormConfig(getRequest(), "token", null, null, false, "bad");
+
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getResponseCode());
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals("Invalid user profile token.", response.getParams().getErrMsg());
+        verifyNoInteractions(orgReadService, userDesignationService, formConfigRuleEngine);
+    }
+
+    @Test
+    void readFormConfig_blankShaKey_returns401() {
+        when(accessTokenValidator.fetchUserDetailsFromToken("token")).thenReturn(userDetails);
+        when(validationService.validateForm(anyMap(), eq(Constants.Parameters.READ))).thenReturn(Constants.SUCCESSFUL);
+        when(shaKeyDecoderService.decode(" ")).thenReturn(Optional.empty());
+
+        ApiResponse response = service.readFormConfig(getRequest(), "token", null, null, false, " ");
+
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getResponseCode());
+        verifyNoInteractions(orgReadService, userDesignationService, formConfigRuleEngine);
+    }
+
+    @Test
+    void readFormConfig_trustedShaKeyWithoutDesignation_neverCallsUserRead() {
+        when(accessTokenValidator.fetchUserDetailsFromToken("token")).thenReturn(userDetails);
+        when(validationService.validateForm(anyMap(), eq(Constants.Parameters.READ))).thenReturn(Constants.SUCCESSFUL);
+        when(shaKeyDecoderService.decode("sha-token")).thenReturn(Optional.of(ShaKeyProfile.builder()
+                .userId("user1").rootOrgId("shaOrg1").ministryOrStateType("SPV").designations(List.of()).build()));
+        when(formConfigRuleEngine.resolve(any(FormConfigResolutionContext.class))).thenReturn(Optional.empty());
+        Map<String, Object> request = getRequest();
+        // A ministry rootOrg in the request would normally trigger a second org read - not on this path.
+        ((Map<String, Object>) request.get(Constants.Parameters.REQUEST)).put(Constants.ROOTORG, "ministryOrg");
+
+        service.readFormConfig(request, "token", null, null, false, "sha-token");
+
+        verifyNoInteractions(orgReadService, userDesignationService);
+        ArgumentCaptor<FormConfigResolutionContext> ctxCaptor = ArgumentCaptor.forClass(FormConfigResolutionContext.class);
+        verify(formConfigRuleEngine).resolve(ctxCaptor.capture());
+        assertEquals("shaOrg1", ctxCaptor.getValue().getRootOrg());
+        assertTrue(ctxCaptor.getValue().getDesignations().isEmpty());
+        assertEquals(null, ctxCaptor.getValue().getDesignationRootOrg());
+    }
+
+    @Test
+    void readFormConfig_ownExpiredShaKey_returns422WithRefreshMessage() {
+        when(accessTokenValidator.fetchUserDetailsFromToken("token")).thenReturn(userDetails);
+        when(validationService.validateForm(anyMap(), eq(Constants.Parameters.READ))).thenReturn(Constants.SUCCESSFUL);
+        when(shaKeyDecoderService.decode("expired")).thenThrow(new ShaKeyExpiredException("user1"));
+
+        ApiResponse response = service.readFormConfig(getRequest(), "token", null, null, false, "expired");
+
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, response.getResponseCode());
+        assertEquals(Constants.FAILED, response.getParams().getStatus());
+        assertEquals("User profile token expired. Please refresh the page to get a new token.", response.getParams().getErrMsg());
+        verifyNoInteractions(orgReadService, userDesignationService, formConfigRuleEngine);
+    }
+
+    @Test
+    void readFormConfig_someoneElsesExpiredShaKey_returns401() {
+        when(accessTokenValidator.fetchUserDetailsFromToken("token")).thenReturn(userDetails);
+        when(validationService.validateForm(anyMap(), eq(Constants.Parameters.READ))).thenReturn(Constants.SUCCESSFUL);
+        when(shaKeyDecoderService.decode("expired")).thenThrow(new ShaKeyExpiredException("someone-else"));
+
+        ApiResponse response = service.readFormConfig(getRequest(), "token", null, null, false, "expired");
+
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getResponseCode());
+        assertEquals("Invalid user profile token.", response.getParams().getErrMsg());
+        verifyNoInteractions(orgReadService, userDesignationService, formConfigRuleEngine);
     }
 }

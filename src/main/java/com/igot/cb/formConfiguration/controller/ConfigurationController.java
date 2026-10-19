@@ -25,6 +25,21 @@ public class ConfigurationController {
     return new ResponseEntity<>(response, response.getResponseCode());
   }
 
+  /**
+   * Wrapper over {@code /formsConfig/read} for callers that also send the lms profileToken in the
+   * {@code x-authenticated-user-profileToken} header. Same request body, response and matching as
+   * {@code /read}, but the user's rootOrg / ministryOrStateType / designation come only from the
+   * profileToken - no org read / user read calls. Expired token: 422; any other invalid token: 401.
+   */
+  @PostMapping("/profile/read")
+  public ResponseEntity<ApiResponse> readFormConfigWithProfileToken(
+          @RequestBody Map<String, Object> request,
+          @RequestHeader(Constants.Parameters.X_AUTH_TOKEN) String token,
+          @RequestHeader(Constants.Parameters.X_AUTH_PROFILE_TOKEN) String shaKey) {
+    ApiResponse response = formsConfigurationService.readFormConfig(request,token,null,null,false,shaKey);
+    return new ResponseEntity<>(response, response.getResponseCode());
+  }
+
   @PostMapping("/admin/read/{userId}")
   public ResponseEntity<ApiResponse> readFormConfigForAdmin(
           @RequestBody Map<String, Object> request,

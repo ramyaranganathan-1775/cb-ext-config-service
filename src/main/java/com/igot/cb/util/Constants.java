@@ -34,6 +34,8 @@ public interface Constants {
     interface Parameters {
         static final String REQUEST = "request";
         static final String X_AUTH_TOKEN = "x-authenticated-user-token";
+        /** Optional sha key (lms profileToken) header — see ShaKeyDecoderService. */
+        static final String X_AUTH_PROFILE_TOKEN = "x-authenticated-user-profileToken";
         static final String CREATE = "create";
         static final String READ = "read";
         static final String UPDATE = "update";
@@ -69,6 +71,8 @@ public interface Constants {
         static final String FIELD_CRITERIA_ALREADY_EXISTS = "Duplicate form configuration detected for the selected Type, Sub-Type, Portal, and Client Version. Please review and remove the duplicate.";
 
         static final String BAD_REQUEST = "Bad Request";
+        static final String PROFILE_TOKEN_EXPIRED = "User profile token expired. Please refresh the page to get a new token.";
+        static final String PROFILE_TOKEN_INVALID = "Invalid user profile token.";
 
     }
 
@@ -102,6 +106,8 @@ public interface Constants {
     public static final String ROOTORG ="rootOrg";
     public static final String DESIGNATION = "designation";
     public static final String MINISTRY_OR_STATE_TYPE = "ministryOrStateType";
+    /** "iss" claim sunbird-lms-service's ProfileTokenGenerator sets on every sha key (profileToken). */
+    public static final String SHA_KEY_ISSUER = "sunbird-lms-service";
     public static final String SB_ORG_TYPE = "sbOrgType";
     public static final String MINISTRY = "ministry";
     public static final String STATE = "state";
@@ -132,5 +138,7 @@ public interface Constants {
     public  static final String ERROR_REDIS_KEY_NOTFOUND = "No Keys found, Redis cache is empty";
     public static final String X_AUTH_USER_ORG_ID = "x-authenticated-user-orgid";
     public static final String X_AUTH_USER_ROLES = "x-authenticated-user-roles";
+    public static final String PROFILE_TOKEN_KEY_DIGEST = "SHA-256";
+    public static final String PROFILE_TOKEN_HMAC_ALGORITHM = "HmacSHA256";
     ;
 }

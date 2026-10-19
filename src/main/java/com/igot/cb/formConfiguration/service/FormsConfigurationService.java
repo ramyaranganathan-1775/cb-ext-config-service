@@ -9,7 +9,17 @@ import java.util.Map;
 @Service
 public interface FormsConfigurationService {
 
-    ApiResponse readFormConfig(Map<String, Object> request, String token, String org, List<String> userRoles,boolean isAdmin);
+    default ApiResponse readFormConfig(Map<String, Object> request, String token, String org, List<String> userRoles, boolean isAdmin) {
+        return readFormConfig(request, token, org, userRoles, isAdmin, null);
+    }
+
+    /**
+     * @param shaKey lms profileToken (x-authenticated-user-profileToken), or null for plain /formsConfig/read.
+     *               When non-null it must verify and be issued for this caller: its rootorgid /
+     *               ministryOrStateType / designation are then used and no org read / user read call is
+     *               made. Expired: 422; otherwise invalid: 401.
+     */
+    ApiResponse readFormConfig(Map<String, Object> request, String token, String org, List<String> userRoles, boolean isAdmin, String shaKey);
 
     ApiResponse createFormConfigV2(Map<String, Object> request, String token);
 

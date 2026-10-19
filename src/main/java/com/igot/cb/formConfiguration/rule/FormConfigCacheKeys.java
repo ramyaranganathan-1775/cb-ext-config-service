@@ -9,6 +9,8 @@ import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static com.igot.cb.util.Constants.PROFILE_TOKEN_KEY_DIGEST;
+
 /**
  * Builds a distinct Redis key namespace per rule, so each rule's cached entries can be looked up
  * and invalidated independently of every other rule.
@@ -48,7 +50,7 @@ final class FormConfigCacheKeys {
 
     private static String sha256(String value) {
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            MessageDigest digest = MessageDigest.getInstance(PROFILE_TOKEN_KEY_DIGEST);
             byte[] bytes = digest.digest(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder();
             for (byte b : bytes) {

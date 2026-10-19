@@ -63,6 +63,33 @@ class ConfigurationControllerTest {
             .andExpect(status().isOk());
   }
 
+  @Test
+  void readFormConfigWithProfileToken_passesShaKeyHeader() throws Exception {
+    ApiResponse response = new ApiResponse();
+    response.setResponseCode(HttpStatus.OK);
+
+    Mockito.when(formsConfigurationService.readFormConfig(
+                    anyMap(), eq("token"), isNull(), isNull(), eq(false), eq("sha-token")))
+            .thenReturn(response);
+
+    mockMvc.perform(post("/formsConfig/profile/read")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header(Constants.Parameters.X_AUTH_TOKEN, "token")
+                    .header(Constants.Parameters.X_AUTH_PROFILE_TOKEN, "sha-token")
+                    .content(objectMapper.writeValueAsString(getRequest())))
+            .andExpect(status().isOk());
+  }
+
+  @Test
+  void readFormConfigWithProfileToken_missingShaKeyHeader_isBadRequest() throws Exception {
+    mockMvc.perform(post("/formsConfig/profile/read")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header(Constants.Parameters.X_AUTH_TOKEN, "token")
+                    .content(objectMapper.writeValueAsString(getRequest())))
+            .andExpect(status().isBadRequest());
+    Mockito.verifyNoInteractions(formsConfigurationService);
+  }
+
   private Map<String, Object> getRequest() {
     Map<String, Object> data = new HashMap<>();
     data.put("field", "value");

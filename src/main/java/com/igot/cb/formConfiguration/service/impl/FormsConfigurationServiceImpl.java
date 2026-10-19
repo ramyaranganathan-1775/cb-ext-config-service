@@ -7,6 +7,9 @@ import com.igot.cb.authentication.util.AccessTokenValidator;
 import com.igot.cb.formConfiguration.entity.FormConfigurationEntity;
 import com.igot.cb.formConfiguration.external.OrgReadService;
 import com.igot.cb.formConfiguration.external.UserDesignationService;
+import com.igot.cb.formConfiguration.external.ShaKeyDecoderService;
+import com.igot.cb.formConfiguration.external.ShaKeyExpiredException;
+import com.igot.cb.formConfiguration.external.ShaKeyProfile;
 import com.igot.cb.formConfiguration.repository.FormConfigurationRepository;
 import com.igot.cb.formConfiguration.rule.FormConfigResolutionContext;
 import com.igot.cb.formConfiguration.rule.FormConfigRuleEngine;
@@ -56,10 +59,13 @@ public class FormsConfigurationServiceImpl implements FormsConfigurationService 
     private UserDesignationService userDesignationService;
 
     @Autowired
+    private ShaKeyDecoderService shaKeyDecoderService;
+
+    @Autowired
     private CacheService cacheService;
 
     @Override
-    public ApiResponse readFormConfig(Map<String, Object> formConfigData, String authTokenOrUserId,String userOrg,List<String> userRoles,boolean isAdmin) {
+    public ApiResponse readFormConfig(Map<String, Object> formConfigData, String authTokenOrUserId, String userOrg, List<String> userRoles, boolean isAdmin, String shaKey) {
 
         log.info("FormsConfigurationServiceImpl::readFormConfig: Getting forms {}", formConfigData);
         ApiResponse response = ProjectUtil.createDefaultResponse(Constants.READ_FORMS_CONFIG_API);
@@ -113,6 +119,36 @@ public class FormsConfigurationServiceImpl implements FormsConfigurationService 
             String portal = requestData.get(Constants.PORTAL).toString();
             Double clientVersion = Double.valueOf(requestData.get(Constants.CLIENT_VERSION).toString());
 
+            // Sha key (lms profileToken, see ShaKeyDecoderService) - only on /formsConfig/profile/read,
+            // which always passes one (shaKey == null means plain /formsConfig/read). It carries this
+            // caller's rootorgid + ministryOrStateType + designation and is the ONLY source of them on
+            // that path: no OrgReadService / UserDesignationService call is made. An expired token gets
+            // 422 (the UI refreshes for a new one); any other problem - blank, bad signature,
+            // malformed, wrong issuer, or issued for another user - gets 401. Never a fallback.
+            boolean shaKeyFlow = shaKey != null;
+            ShaKeyProfile shaKeyProfile = null;
+            if (shaKeyFlow) {
+                Optional<ShaKeyProfile> decoded;
+                try {
+                    decoded = shaKeyDecoderService.decode(shaKey);
+                } catch (ShaKeyExpiredException e) {
+                    if (StringUtils.equals(userId, e.getUserId())) {
+                        ProjectUtil.returnErrorMsg(Constants.ResponseMessages.PROFILE_TOKEN_EXPIRED,
+                                HttpStatus.UNPROCESSABLE_ENTITY, response, Constants.FAILED);
+                        return response;
+                    }
+                    decoded = Optional.empty();
+                }
+                if (decoded.isEmpty() || !StringUtils.equals(userId, decoded.get().getUserId())) {
+                    log.warn("FormsConfigurationServiceImpl::readFormConfig: invalid profile token, or not issued for caller {}", userId);
+                    ProjectUtil.returnErrorMsg(Constants.ResponseMessages.PROFILE_TOKEN_INVALID,
+                            HttpStatus.UNAUTHORIZED, response, Constants.FAILED);
+                    return response;
+                }
+                shaKeyProfile = decoded.get();
+                rootOrg = shaKeyProfile.getRootOrgId();
+            }
+
             // Rule 1 (designation) rootOrg, priority-resolved:
             // 1st priority ("ministry"): the caller's own rootOrg (from token) is checked first; only
             //               if it's NOT a "ministry" do we fall back to checking the request's
@@ -123,7 +159,9 @@ public class FormsConfigurationServiceImpl implements FormsConfigurationService 
             // Neither -> designationRootOrg stays null, so the designation rule doesn't apply at all.
             String designationRootOrg = null;
             String designationMinistryOrStateType = null;
-            String tokenOrgType = orgReadService.getMinistryOrStateType(rootOrg, token);
+            String tokenOrgType = shaKeyFlow
+                    ? shaKeyProfile.getMinistryOrStateType()
+                    : orgReadService.getMinistryOrStateType(rootOrg, token);
             if (Constants.MINISTRY.equalsIgnoreCase(tokenOrgType)) {
                 designationRootOrg = rootOrg;
                 designationMinistryOrStateType = Constants.MINISTRY;
@@ -133,7 +171,7 @@ public class FormsConfigurationServiceImpl implements FormsConfigurationService 
                 if (ObjectUtils.isNotEmpty(inputRootOrgValue) && !"*".equals(inputRootOrgValue.toString())) {
                     inputRootOrg = inputRootOrgValue.toString();
                 }
-                if (inputRootOrg != null && Constants.MINISTRY.equalsIgnoreCase(orgReadService.getMinistryOrStateType(inputRootOrg, token))) {
+                if (!shaKeyFlow && inputRootOrg != null && Constants.MINISTRY.equalsIgnoreCase(orgReadService.getMinistryOrStateType(inputRootOrg, token))) {
                     designationRootOrg = inputRootOrg;
                     designationMinistryOrStateType = Constants.MINISTRY;
                 }
@@ -144,7 +182,12 @@ public class FormsConfigurationServiceImpl implements FormsConfigurationService 
                 designationMinistryOrStateType = Constants.STATE;
             }
 
-            userDesignationService.resolveUserProfile(userDetails, token);
+            if (shaKeyFlow) {
+                // A blank designation claim means the user has none - no user-read lookup.
+                userDetails.setDesignations(shaKeyProfile.getDesignations());
+            } else {
+                userDesignationService.resolveUserProfile(userDetails, token);
+            }
             List<String> designations = userDetails.getDesignations();
 
             FormConfigResolutionContext ctx = FormConfigResolutionContext.builder()
